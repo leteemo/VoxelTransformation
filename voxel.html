@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>three.js webgl - GLTFloader</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<link type="text/css" rel="stylesheet" href="three.js-master/examples/main.css">
+	</head>
+
+	<body>
+
+		<div id="telecharger"> </div>
+		<input id="input" type="file" id="image-input">
+		<img id="image-preview">
+
+		<!-- Import maps polyfill -->
+		<!-- Remove this when import maps will be widely supported -->
+		<script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>
+		<script type="importmap">
+		            {
+		                "imports": {
+		                    "three": "./three.js-master/build/three.module.js",
+		                    "three/addons/": "./three.js-master/examples/jsm/"
+		                }
+		            }
+		</script>
+
+		<script type="module">
+
+		import * as THREE from 'three';
+		import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+		import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+		import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
+		let camera, scene, renderer;
+		var model = null;
+		let mouse = new THREE.Vector2();
+		let raycaster = new THREE.Raycaster();
+		var points = [];
+		var blocs = [];
+		var generation = true;
+		var frameTime = 200;
+		var val = "";
+		setInterval(generer, frameTime);
+
+
+
+		init();
+		chargement('three.js-master/examples/models/gltf/Parrot.glb');
+		render();
+		window.addEventListener('keydown', onKeyboard);
+
+
+		function init() {
+		        const container = document.createElement('div');
+		        document.body.appendChild(container);
+
+		        camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.25, 500);
+		        camera.position.set(-5, 4, 5);
+		        scene = new THREE.Scene();
+
+		        new RGBELoader().setPath('three.js-master/examples/textures/equirectangular/').load('moonless_golf_1k.hdr', function (texture) {
+		                texture.mapping = THREE.EquirectangularReflectionMapping;
+		                scene.background = texture;
+		                scene.environment = texture;
+		                render();
+						});
+
+		        renderer = new THREE.WebGLRenderer({ antialias: true });
+		        renderer.setPixelRatio(window.devicePixelRatio);
+		        renderer.setSize(window.innerWidth, window.innerHeight);
+		        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+		        renderer.toneMappingExposure = 1;
+		        renderer.outputEncoding = THREE.sRGBEncoding;
+		        container.appendChild(renderer.domElement);
+
+		        const controls = new OrbitControls(camera, renderer.domElement);
+		        controls.addEventListener('change', render); // use if there is no animation loop
+		        controls.minDistance = 150;
+		        controls.maxDistance = 250;
+		        controls.target.set(10, 0, -10.2);
+		        controls.update();
+
+		        window.addEventListener('resize', onWindowResize);
+
+		}
+
+		function clearAll(){
+			blocs.forEach((cube) => {
+					scene.remove(cube);
+			});
+
+			blocs = [];
+			points = [];
+		}
+
+
+		function generer(){
+				const taille = 20;
+
+					// Obtenir les dimensions du modèle
+
+				const sizeBlocs = 5;
+
+				if(generation){
+
+					for ( var y = -15; y < 15; y++) {
+							for ( var x = -15; x <= 15; x++) {
+									myFunc(x, y, 30, sizeBlocs, 0, 0, -1);
+							}
+					}
+
+					for ( var y = -15; y < 15; y++) {
+							for ( var z = -15; z <= 15; z++) {
+									myFunc(30, y, z, sizeBlocs, -1, 0, 0);
+							}
+					}
+
+					for ( var x = -15; x < 15; x++) {
+							for ( var z = -15; z <= 15; z++) {
+									myFunc(x, 30, z, sizeBlocs, 0, -1, 0);
+							}
+					}
+
+				for(var i=0; i<points.length-1; i++){
+					val += (points[i][0]/sizeBlocs).toString() + "_" + (points[i][1]/sizeBlocs).toString() + "_" + (points[i][2]/sizeBlocs).toString() + " ";
+				}
+
+				var fileName = "model.txt";
+
+				var blob = new Blob([val], {type: "text/plain"});
+				var file = new File([blob], fileName, {type: "text/plain"});
+
+				var fr = new FileReader();
+
+				fr.onload = function(evt){
+						const el = document.getElementById("telecharger");
+						el.innerHTML = "<br><a href="+URL.createObjectURL(file)+" download=" + file.name + ">Download " + file.name;
+				}
+
+				fr.readAsText(file);
+			}
+
+			val = val + "\n";
+
+		}
+
+		function chargement(fichier){
+
+				scene.remove(model );
+				clearAll();
+				var loader = new GLTFLoader();
+
+				loader.load(fichier, function (gltf) {
+						model = gltf.scene;
+						scene.add(gltf.scene);
+						var mixer = new THREE.AnimationMixer(model);
+						mixer.addEventListener('finished', function(event) {
+								generation = false;
+								console.log('Lanimation est terminée.');
+						});
+
+						//Recuperer le premier clip d'animation
+						var clip = gltf.animations[0];
+
+						//Creer un AnimationAction à partir du clip et du Mixer
+						var action = mixer.clipAction(clip);
+						action.loop = THREE.LoopOnce;
+						action.setEffectiveTimeScale(10/frameTime);
+
+						//Jouer l'animation
+						action.play();
+						var clock = new THREE.Clock();
+
+						//Boucle de rendu pour mettre à jour l'animation à chaque frame
+						function animate() {
+								requestAnimationFrame(animate);
+								mixer.update(clock.getDelta());
+								render();
+						}
+
+						animate();
+				});
+		}
+
+		 function onWindowResize() {
+		         camera.aspect = window.innerWidth / window.innerHeight;
+		         camera.updateProjectionMatrix();
+		         renderer.setSize(window.innerWidth, window.innerHeight);
+		         render();
+		 }
+
+		 function convertionPoint(point, ratio){
+		         return [parseInt(point["x"]/ratio)*ratio, parseInt(point["y"]/ratio)*ratio, parseInt(point["z"]/ratio)*ratio]
+		 }
+
+
+		function myFunc(x, y, z, coef, directionX, directionY, directionZ) {
+
+
+						const position = new THREE.Vector3((x*coef)+(coef/2),(y*coef)+(coef/2), (z*coef)+(coef/2));
+						const direction = new THREE.Vector3(directionX, directionY, directionZ);
+						raycaster.set(position, direction);
+						if(model){
+							const intersects = raycaster.intersectObject(model, true);
+
+							if (intersects.length > 0) {
+										//console.log(Number(intersects[0].object.material.color.getHex()).toString(16).padStart(2, '0'));
+										for(var i=0; i<intersects.length; i++){
+
+											var pt = convertionPoint(intersects[i].point, coef);
+
+											if(!points.includes(pt)){
+													points.push(pt);
+													const geometry = new THREE.BoxGeometry( coef, coef, coef );
+													const material = new THREE.MeshBasicMaterial( { color: intersects[i].object.material.color } );
+													const cube = new THREE.Mesh( geometry, material );
+													cube.position.x = pt[0]
+													cube.position.y = pt[1]
+													cube.position.z = pt[2]
+													blocs.push(cube);
+													scene.add(cube);
+											}
+									}
+							}
+						}
+
+						if(y==-14){
+							clearAll();
+						}
+
+		}
+
+		document.getElementById('input').addEventListener('change', function(imageInput) {
+				if (imageInput.target.files[0]) {
+						console.log('You selected ' + imageInput.target.files[0]);
+						const file = URL.createObjectURL(imageInput.target.files[0]);
+						chargement(file);
+				}
+		});
+
+		function onKeyboard(event) {
+				generer();
+		 }
+
+		 function render() {
+				renderer.render(scene, camera);
+		 }
+
+		</script>
+
+</body>
+
+</html>
